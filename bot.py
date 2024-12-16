@@ -171,8 +171,13 @@ def excel_to_vcf(input_file, output_dir, custom_name_func, split_size, custom_fi
         for index, row in df.iterrows():
             try:
                 # Get name and phone from DataFrame
-                name = str(row.iloc[0]).strip()
-                phone = str(row.iloc[1]).strip() if len(row) > 1 else name
+                name = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else None
+                phone = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else name
+
+                # Skip if name or phone is NaN
+                if name is None or phone is None:
+                    print(f"Row {index} has NaN values, skipping.")
+                    continue
 
                 if not phone.startswith('+'):
                     phone = f"+{phone}"
