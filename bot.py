@@ -30,8 +30,11 @@ MAX_DOWNLOAD_TIMEOUT = 300  # 5 minutes timeout for downloads
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB max file size
 
 def check_whitelist(user_id: int) -> bool:
-    """Check if user_id is in whitelist."""
-    return user_manager.is_whitelisted(user_id)
+    """Check if user is whitelisted and has remaining access"""
+    if not user_manager.is_whitelisted(user_id):
+        return False
+    limit = user_manager.get_access_limit(user_id)
+    return limit is not None and limit > 0
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_whitelist(update.effective_user.id):

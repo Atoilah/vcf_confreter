@@ -62,3 +62,16 @@ class UserManager:
     def get_all_users(self) -> Dict[str, dict]:
         """Get all users and their limits."""
         return self.users.copy()
+
+    def is_user_active(self, user_id: int) -> bool:
+        """Check if user exists and is not expired or limited"""
+        user_id_str = str(user_id)
+        if user_id_str not in self.users:
+            return False
+
+        user_data = self.users[user_id_str]
+        access_limit = user_data.get("access_limit", 0)
+        if access_limit <= 0:
+            return False
+
+        return True
