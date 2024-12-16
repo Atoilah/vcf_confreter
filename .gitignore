@@ -1,3 +1,4 @@
 .env
 input_files/
 output_vcf/
+output_merged/
