@@ -10,6 +10,8 @@ A Telegram bot that converts text and Excel files to VCF (vCard) format.
 - Access limit management per user
 - Customizable contact naming patterns
 - Split output into multiple VCF files
+- Handles NaN values in Excel files gracefully
+- Improved error handling and user notifications
 
 ## Setup
 
@@ -19,31 +21,21 @@ A Telegram bot that converts text and Excel files to VCF (vCard) format.
    pip install -r requirements.txt
    ```
 3. Create a `.env` file with the following content:
+   ```plaintext
+   BOT_TOKEN="YOUR_TOKEN"
+   OWNER_ID="YOUR_ID"
+   OWNER_USERNAME="YOUR_USERNAME"
    ```
-   BOT_TOKEN=your_bot_token_here
-   OWNER_ID=your_telegram_user_id
-   ```
-   Replace `your_bot_token_here` with your Telegram bot token and `your_telegram_user_id` with your Telegram user ID.
 
-## Usage
-
-1. Start the bot:
+4. Run the bot:
    ```bash
    python bot.py
    ```
 
-2. Available commands:
-   - `/start` - Start the bot and see available commands
-   - `/getid` - Get your Telegram user ID
-   - `/checklimit` - Check your remaining access limit
-   - `/txt_to_vcf` - Convert TXT file to VCF
-   - `/excel_to_vcf` - Convert Excel file to VCF
+## Usage
 
-   Admin commands:
-   - `/add <user_id>` - Add user to whitelist
-   - `/remove <user_id>` - Remove user from whitelist
-   - `/setlimit <user_id> <limit>` - Set user's access limit
-   - `/whitelist` - Show all whitelisted users
+- Upload a TXT or Excel file to convert it to VCF format.
+- Follow the prompts to customize the output.
 
 ## File Format Requirements
 

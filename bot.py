@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 OWNER_ID = int(os.getenv('OWNER_ID', 0))
+OWNER_USERNAME = os.getenv('OWNER_USERNAME')
 
 # Initialize user manager
 user_manager = UserManager()
@@ -23,7 +24,7 @@ user_manager = UserManager()
 ASK_PATTERN, ASK_SPLIT, ASK_SPLIT_SIZE, ASK_FILENAME = range(4)
 
 # Access denied message
-ACCESS_DENIED_MESSAGE = "Anda tidak memiliki akses ke bot ini. Hubungi admin untuk mendapatkan akses bot"
+ACCESS_DENIED_MESSAGE = f"Anda tidak memiliki akses ke bot ini. Hubungi admin {OWNER_USERNAME} untuk mendapatkan akses bot"
 
 # Constants
 MAX_DOWNLOAD_TIMEOUT = 300  # 5 minutes timeout for downloads
@@ -146,7 +147,7 @@ END:VCARD
 """)
 
                 if split_size and len(vcf_data) == split_size:
-                    output_file = os.path.join(output_dir, f"{custom_filename}_{file_index}.vcf")
+                    output_file = os.path.join(output_dir, f"{custom_filename}{file_index}.vcf")
                     with open(output_file, 'w', encoding='utf-8') as vcf_file:
                         vcf_file.write(''.join(vcf_data))
                     file_index += 1
@@ -155,12 +156,12 @@ END:VCARD
                 print(f"Baris tidak valid, dilewati: {e}")
 
         if vcf_data:
-            output_file = os.path.join(output_dir, f"{custom_filename}_{file_index}.vcf")
+            output_file = os.path.join(output_dir, f"{custom_filename}{file_index}.vcf")
             with open(output_file, 'w', encoding='utf-8') as vcf_file:
                 vcf_file.write(''.join(vcf_data))
             
         # Return list of created files
-        return [os.path.join(output_dir, f"{custom_filename}_{i}.vcf") 
+        return [os.path.join(output_dir, f"{custom_filename}{i}.vcf") 
                 for i in range(1, file_index + (1 if vcf_data else 0))]
     except Exception as e:
         raise Exception(f"Error in txt_to_vcf: {str(e)}")
@@ -197,7 +198,7 @@ END:VCARD
 """)
 
                 if split_size and len(vcf_data) == split_size:
-                    output_file = os.path.join(output_dir, f"{custom_filename}_{file_index}.vcf")
+                    output_file = os.path.join(output_dir, f"{custom_filename}{file_index}.vcf")
                     with open(output_file, 'w', encoding='utf-8') as vcf_file:
                         vcf_file.write(''.join(vcf_data))
                     file_index += 1
@@ -206,12 +207,12 @@ END:VCARD
                 print(f"Baris tidak valid, dilewati: {e}")
 
         if vcf_data:
-            output_file = os.path.join(output_dir, f"{custom_filename}_{file_index}.vcf")
+            output_file = os.path.join(output_dir, f"{custom_filename}{file_index}.vcf")
             with open(output_file, 'w', encoding='utf-8') as vcf_file:
                 vcf_file.write(''.join(vcf_data))
 
         # Return list of created files
-        return [os.path.join(output_dir, f"{custom_filename}_{i}.vcf") 
+        return [os.path.join(output_dir, f"{custom_filename}{i}.vcf") 
                 for i in range(1, file_index + (1 if vcf_data else 0))]
     except Exception as e:
         raise Exception(f"Error in excel_to_vcf: {str(e)}")
