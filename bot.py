@@ -21,18 +21,34 @@ OWNER_USERNAME = os.getenv('OWNER_USERNAME')
 # Initialize user manager
 user_manager = UserManager()
 
-# State for ConversationHandler
-ASK_PATTERN, ASK_SPLIT, ASK_SPLIT_SIZE, ASK_FILENAME = range(4)
-# States for merge conversation
-UPLOAD_FIRST_FILE, UPLOAD_SECOND_FILE, ASK_MERGE_FILENAME = range(4, 7)
+# Constants for file operations
+DOWNLOAD_DIR = "downloads"
+OUTPUT_DIR = "output_vcf"
+INPUT_DIR = "input_files"
 
-# Access denied message
-ACCESS_DENIED_MESSAGE = f"Anda tidak memiliki akses ke bot ini. Hubungi admin {OWNER_USERNAME} untuk mendapatkan akses bot"
+# Error messages
+ERROR_MESSAGES = {
+    "access_denied": "Anda tidak memiliki akses ke bot ini. Hubungi admin {} untuk mendapatkan akses bot",
+    "file_too_large": "File terlalu besar. Maksimal ukuran file adalah {}MB.",
+    "download_timeout": "Waktu unduh habis. Silakan coba lagi dengan file yang lebih kecil.",
+    "processing_error": "Maaf, terjadi kesalahan saat memproses file. Admin telah diberitahu.",
+    "unsupported_format": "Format file tidak didukung.",
+    "empty_filename": "Nama file tidak boleh kosong. Silakan masukkan nama file lagi."
+}
 
 # Constants
 MAX_DOWNLOAD_TIMEOUT = 300  # 5 minutes timeout for downloads
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB max file size
 FILE_UPLOAD_TIMEOUT = 60  # 1 minute timeout for file uploads
+
+# Create necessary directories
+for directory in [DOWNLOAD_DIR, OUTPUT_DIR, INPUT_DIR]:
+    os.makedirs(directory, exist_ok=True)
+
+# State for ConversationHandler
+ASK_PATTERN, ASK_SPLIT, ASK_SPLIT_SIZE, ASK_FILENAME = range(4)
+# States for merge conversation
+UPLOAD_FIRST_FILE, UPLOAD_SECOND_FILE, ASK_MERGE_FILENAME = range(4, 7)
 
 def check_whitelist(user_id: int) -> bool:
     """Check if user is whitelisted and has remaining access"""
@@ -43,7 +59,7 @@ def check_whitelist(user_id: int) -> bool:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_whitelist(update.effective_user.id):
-        await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+        await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
 
     await update.message.reply_text(
@@ -225,14 +241,14 @@ END:VCARD
 # File handlers
 async def txt_to_vcf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_whitelist(update.effective_user.id):
-        await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+        await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
 
     await update.message.reply_text("Silakan unggah file .txt untuk dikonversi ke .vcf.")
 
 async def excel_to_vcf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_whitelist(update.effective_user.id):
-        await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+        await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
 
     await update.message.reply_text("Silakan unggah file .xlsx untuk dikonversi ke .vcf.")
@@ -241,33 +257,11 @@ async def handle_txt_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle uploaded TXT files."""
     try:
         if not check_whitelist(update.effective_user.id):
-            await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+            await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return
 
-        # Check file size
-        file_size = update.message.document.file_size
-        if file_size > MAX_FILE_SIZE:
-            await update.message.reply_text(
-                f"File terlalu besar. Maksimal ukuran file adalah {MAX_FILE_SIZE // (1024*1024)}MB."
-            )
-            return ConversationHandler.END
-
-        # Get file
-        file = await update.message.document.get_file()
-        os.makedirs("input_files", exist_ok=True)
-        file_path = f"input_files/{update.message.document.file_name}"
-        
-        # Send status message
-        status_msg = await update.message.reply_text("Mengunduh file...")
-        
-        try:
-            async with async_timeout.timeout(MAX_DOWNLOAD_TIMEOUT):
-                await file.download_to_drive(file_path)
-                await status_msg.edit_text("File berhasil diunduh!")
-        except asyncio.TimeoutError:
-            await status_msg.edit_text("Waktu unduh habis. Silakan coba lagi dengan file yang lebih kecil.")
-            if os.path.exists(file_path):
-                os.remove(file_path)
+        file_path, success = await safe_file_download(update, context, "TXT")
+        if not success:
             return ConversationHandler.END
         
         context.user_data['input_file'] = file_path
@@ -278,7 +272,7 @@ async def handle_txt_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await notify_owner_error(context, f"Error in handle_txt_file: {str(e)}", update.effective_user.id)
         await update.message.reply_text(
-            "Maaf, terjadi kesalahan saat memproses file. Admin telah diberitahu."
+            ERROR_MESSAGES["processing_error"]
         )
         if 'file_path' in locals() and os.path.exists(file_path):
             os.remove(file_path)
@@ -288,33 +282,11 @@ async def handle_excel_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle uploaded Excel files."""
     try:
         if not check_whitelist(update.effective_user.id):
-            await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+            await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return
 
-        # Check file size
-        file_size = update.message.document.file_size
-        if file_size > MAX_FILE_SIZE:
-            await update.message.reply_text(
-                f"File terlalu besar. Maksimal ukuran file adalah {MAX_FILE_SIZE // (1024*1024)}MB."
-            )
-            return ConversationHandler.END
-
-        # Get file
-        file = await update.message.document.get_file()
-        os.makedirs("input_files", exist_ok=True)
-        file_path = f"input_files/{update.message.document.file_name}"
-        
-        # Send status message
-        status_msg = await update.message.reply_text("Mengunduh file...")
-        
-        try:
-            async with async_timeout.timeout(MAX_DOWNLOAD_TIMEOUT):
-                await file.download_to_drive(file_path)
-                await status_msg.edit_text("File berhasil diunduh!")
-        except asyncio.TimeoutError:
-            await status_msg.edit_text("Waktu unduh habis. Silakan coba lagi dengan file yang lebih kecil.")
-            if os.path.exists(file_path):
-                os.remove(file_path)
+        file_path, success = await safe_file_download(update, context, "Excel")
+        if not success:
             return ConversationHandler.END
         
         context.user_data['input_file'] = file_path
@@ -325,7 +297,7 @@ async def handle_excel_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await notify_owner_error(context, f"Error in handle_excel_file: {str(e)}", update.effective_user.id)
         await update.message.reply_text(
-            "Maaf, terjadi kesalahan saat memproses file. Admin telah diberitahu."
+            ERROR_MESSAGES["processing_error"]
         )
         if 'file_path' in locals() and os.path.exists(file_path):
             os.remove(file_path)
@@ -333,7 +305,7 @@ async def handle_excel_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ask_split(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_whitelist(update.effective_user.id):
-        await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+        await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
 
     context.user_data['custom_name_pattern'] = update.message.text
@@ -365,7 +337,7 @@ async def handle_split_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def ask_filename(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_whitelist(update.effective_user.id):
-        await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+        await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
     
     try:
@@ -379,44 +351,106 @@ async def ask_filename(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def generate_vcf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not check_whitelist(update.effective_user.id):
-            await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+            await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return
 
-        custom_filename = update.message.text
+        custom_filename = update.message.text.strip()
+        if not custom_filename:
+            await update.message.reply_text(ERROR_MESSAGES["empty_filename"])
+            return ASK_FILENAME
+
         input_file = context.user_data['input_file']
         custom_name_pattern = context.user_data['custom_name_pattern']
         split_size = context.user_data.get('split_size')
-        output_dir = "output_vcf"
 
-        custom_name_func = lambda index: custom_name_pattern.replace("{index}", str(index))
-        os.makedirs(output_dir, exist_ok=True)
+        success = await process_file_conversion(update, context, input_file, custom_name_pattern, split_size, custom_filename)
+        if not success:
+            return ConversationHandler.END
 
+        return ConversationHandler.END
+
+    except Exception as e:
+        error_msg = f"Error in generate_vcf: {str(e)}"
+        await notify_owner_error(context, error_msg, update.effective_user.id)
+        await update.message.reply_text(
+            ERROR_MESSAGES["processing_error"]
+        )
+        return ConversationHandler.END
+
+async def notify_owner_error(context: ContextTypes.DEFAULT_TYPE, error_msg: str, user_id: int = None):
+    """Notify owner about errors with structured message"""
+    error_text = f"⚠️ Bot Error:\n{error_msg}\n"
+    if user_id:
+        error_text += f"User ID: {user_id}"
+    await context.bot.send_message(chat_id=OWNER_ID, text=error_text)
+
+async def safe_file_download(update: Update, context: ContextTypes.DEFAULT_TYPE, file_type: str) -> tuple[str, bool]:
+    """
+    Safely download file with proper error handling
+    Returns: (file_path, success)
+    """
+    try:
+        # Validate file size
+        file_size = update.message.document.file_size
+        if file_size > MAX_FILE_SIZE:
+            await update.message.reply_text(
+                ERROR_MESSAGES["file_too_large"].format(MAX_FILE_SIZE // (1024*1024))
+            )
+            return None, False
+
+        # Download file
+        file = await update.message.document.get_file()
+        file_path = os.path.join(INPUT_DIR, update.message.document.file_name)
+        
+        status_msg = await update.message.reply_text("Mengunduh file...")
+        
+        try:
+            async with async_timeout.timeout(MAX_DOWNLOAD_TIMEOUT):
+                await file.download_to_drive(file_path)
+                await status_msg.edit_text("File berhasil diunduh!")
+                return file_path, True
+        except asyncio.TimeoutError:
+            await status_msg.edit_text(ERROR_MESSAGES["download_timeout"])
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            return None, False
+
+    except Exception as e:
+        await notify_owner_error(context, f"Error downloading {file_type} file: {str(e)}", update.effective_user.id)
+        await update.message.reply_text(ERROR_MESSAGES["processing_error"])
+        return None, False
+
+async def process_file_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE, input_file: str, 
+                                custom_name_pattern: str, split_size: int, custom_filename: str) -> bool:
+    """Process file conversion with proper error handling"""
+    try:
         status_msg = await update.message.reply_text("Sedang memproses file...")
 
-        # Process files in a separate thread to prevent timeout
-        def process_file():
+        # Process files in a separate thread
+        def convert_file():
             if input_file.lower().endswith('.txt'):
-                return txt_to_vcf(input_file, output_dir, custom_name_func, split_size, custom_filename)
+                return txt_to_vcf(input_file, OUTPUT_DIR, lambda i: custom_name_pattern.replace("{index}", str(i)),
+                                split_size, custom_filename)
             elif input_file.lower().endswith(('.xlsx', '.xls')):
-                return excel_to_vcf(input_file, output_dir, custom_name_func, split_size, custom_filename)
+                return excel_to_vcf(input_file, OUTPUT_DIR, lambda i: custom_name_pattern.replace("{index}", str(i)),
+                                  split_size, custom_filename)
             else:
-                raise ValueError("Format file tidak didukung")
+                raise ValueError(ERROR_MESSAGES["unsupported_format"])
 
-        # Run file processing in thread pool
+        # Run conversion in thread pool
         with ThreadPoolExecutor() as pool:
-            files = await asyncio.get_event_loop().run_in_executor(pool, process_file)
+            result_files = await asyncio.get_event_loop().run_in_executor(pool, convert_file)
 
-        # Update status message
+        # Send files
         await status_msg.edit_text("File telah diproses, sedang mengirim...")
-
-        # Send files in chunks to prevent timeout
-        chunk_size = 5
-        for i, file_path in enumerate(files, 1):
+        
+        for i, file_path in enumerate(result_files, 1):
             try:
                 with open(file_path, 'rb') as f:
                     await context.bot.send_document(
                         chat_id=update.message.chat_id,
                         document=f,
+                        filename=os.path.basename(file_path),
                         read_timeout=30,
                         write_timeout=30
                     )
@@ -424,51 +458,28 @@ async def generate_vcf(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await notify_owner_error(context, f"Error sending file {file_path}: {str(e)}", update.effective_user.id)
                 continue
 
-            # Update progress after each chunk
-            files_sent = min(i + chunk_size, len(files))
-            await status_msg.edit_text(f"Mengirim file... ({files_sent}/{len(files)})")
-
         # Cleanup
-        try:
-            os.remove(input_file)
-            for file in files:
-                if os.path.exists(file):
-                    os.remove(file)
-        except Exception as e:
-            await notify_owner_error(context, f"Error during cleanup: {str(e)}", update.effective_user.id)
-
-        # Update access limit after successful conversion
-        user_id = update.effective_user.id
-        user_manager.decrement_access_limit(user_id)
-
+        cleanup_files([input_file] + result_files)
+        
+        # Update access limit
+        user_manager.decrement_access_limit(update.effective_user.id)
+        
         await status_msg.edit_text("Konversi selesai!")
-        return ConversationHandler.END
+        return True
 
     except Exception as e:
-        error_msg = f"Error in generate_vcf: {str(e)}"
-        await notify_owner_error(context, error_msg, update.effective_user.id)
-        await update.message.reply_text(
-            "Maaf, terjadi kesalahan saat mengkonversi file. Admin telah diberitahu."
-        )
-        return ConversationHandler.END
+        await notify_owner_error(context, f"Error in file conversion: {str(e)}", update.effective_user.id)
+        await update.message.reply_text(ERROR_MESSAGES["processing_error"])
+        return False
 
-async def notify_owner_error(context: ContextTypes.DEFAULT_TYPE, error_msg: str, user_id: int = None):
-    """Send error notification to owner."""
-    user_info = f" (User ID: {user_id})" if user_id else ""
-    await context.bot.send_message(
-        chat_id=OWNER_ID,
-        text=f"⚠️ Bot Error{user_info}:\n{error_msg}"
-    )
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle errors and notify owner."""
-    error_msg = f"An error occurred: {context.error}"
-    user_id = update.effective_user.id if update and update.effective_user else None
-    await notify_owner_error(context, error_msg, user_id)
-    if update:
-        await update.message.reply_text(
-            "Maaf, terjadi kesalahan. Admin telah diberitahu dan akan segera memperbaikinya."
-        )
+def cleanup_files(files: list[str]):
+    """Safely cleanup files"""
+    for file in files:
+        try:
+            if file and os.path.exists(file):
+                os.remove(file)
+        except Exception:
+            pass
 
 # Merge functions
 def merge_txt_files(file1_path, file2_path, output_dir, custom_filename="merged"):
@@ -499,13 +510,13 @@ def merge_txt_files(file1_path, file2_path, output_dir, custom_filename="merged"
 async def merge_txt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /merge_txt command."""
     if not check_whitelist(update.effective_user.id):
-        await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+        await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
 
     await update.message.reply_text(
-        "🔄 Proses penggabungan file TXT dimulai:\n\n"
-        "1️⃣ Kirim file TXT pertama\n"
-        "⏳ Anda memiliki waktu 1 menit untuk mengirim setiap file."
+        " Proses penggabungan file TXT dimulai:\n\n"
+        "1. Kirim file TXT pertama\n"
+        " Anda memiliki waktu 1 menit untuk mengirim setiap file."
     )
     context.user_data['merge_mode'] = True
     context.user_data['upload_time'] = time.time()
@@ -515,13 +526,13 @@ async def handle_first_txt_file(update: Update, context: ContextTypes.DEFAULT_TY
     """Handle first TXT file upload for merging."""
     try:
         if not check_whitelist(update.effective_user.id):
-            await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+            await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return ConversationHandler.END
 
         # Verify this is actually the first file upload
         if context.user_data.get('first_file'):
             await update.message.reply_text(
-                "⚠️ File pertama sudah diterima.\n"
+                " File pertama sudah diterima.\n"
                 "Silakan kirim file kedua atau mulai ulang dengan /merge_txt"
             )
             return UPLOAD_SECOND_FILE
@@ -531,14 +542,14 @@ async def handle_first_txt_file(update: Update, context: ContextTypes.DEFAULT_TY
         last_upload_time = context.user_data.get('upload_time', 0)
         if current_time - last_upload_time > FILE_UPLOAD_TIMEOUT:
             await update.message.reply_text(
-                "⏰ Waktu upload telah habis. Silakan mulai ulang dengan /merge_txt"
+                " Waktu upload telah habis. Silakan mulai ulang dengan /merge_txt"
             )
             return ConversationHandler.END
 
         # Validate file type
         if not update.message.document.file_name.lower().endswith('.txt'):
             await update.message.reply_text(
-                "❌ Format file tidak valid. Harap kirim file dengan format .txt"
+                " Format file tidak valid. Harap kirim file dengan format .txt"
             )
             return UPLOAD_FIRST_FILE
 
@@ -546,7 +557,7 @@ async def handle_first_txt_file(update: Update, context: ContextTypes.DEFAULT_TY
         file_size = update.message.document.file_size
         if file_size > MAX_FILE_SIZE:
             await update.message.reply_text(
-                f"📛 File terlalu besar. Maksimal ukuran file adalah {MAX_FILE_SIZE // (1024*1024)}MB."
+                f" File terlalu besar. Maksimal ukuran file adalah {MAX_FILE_SIZE // (1024*1024)}MB."
             )
             return ConversationHandler.END
 
@@ -555,7 +566,7 @@ async def handle_first_txt_file(update: Update, context: ContextTypes.DEFAULT_TY
         os.makedirs("input_files", exist_ok=True)
         file_path = f"input_files/{update.message.document.file_name}"
         
-        status_msg = await update.message.reply_text("⬇️ Mengunduh file pertama...")
+        status_msg = await update.message.reply_text("Mengunduh file pertama...")
         
         try:
             async with async_timeout.timeout(MAX_DOWNLOAD_TIMEOUT):
@@ -563,15 +574,15 @@ async def handle_first_txt_file(update: Update, context: ContextTypes.DEFAULT_TY
                 
                 # Verify file is not empty
                 if os.path.getsize(file_path) == 0:
-                    await status_msg.edit_text("❌ File kosong. Silakan kirim file yang berisi teks.")
+                    await status_msg.edit_text(" File kosong. Silakan kirim file yang berisi teks.")
                     os.remove(file_path)
                     return UPLOAD_FIRST_FILE
 
                 await status_msg.edit_text(
-                    "✅ File pertama berhasil diunduh!\n\n"
+                    " File pertama berhasil diunduh!\n\n"
                     "Langkah selanjutnya:\n"
-                    "2️⃣ Silakan kirim file TXT kedua yang akan digabungkan.\n"
-                    "⏳ Anda memiliki waktu 1 menit untuk mengirim file kedua."
+                    "2. Silakan kirim file TXT kedua yang akan digabungkan.\n"
+                    " Anda memiliki waktu 1 menit untuk mengirim file kedua."
                 )
                 
                 # Store file info
@@ -582,7 +593,7 @@ async def handle_first_txt_file(update: Update, context: ContextTypes.DEFAULT_TY
                 return UPLOAD_SECOND_FILE
 
         except asyncio.TimeoutError:
-            await status_msg.edit_text("⏰ Waktu unduh habis. Silakan coba lagi dengan file yang lebih kecil.")
+            await status_msg.edit_text(" Waktu unduh habis. Silakan coba lagi dengan file yang lebih kecil.")
             if os.path.exists(file_path):
                 os.remove(file_path)
             return ConversationHandler.END
@@ -590,7 +601,7 @@ async def handle_first_txt_file(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         await notify_owner_error(context, f"Error in handle_first_txt_file: {str(e)}", update.effective_user.id)
         await update.message.reply_text(
-            "❌ Maaf, terjadi kesalahan saat memproses file. Admin telah diberitahu."
+            " Maaf, terjadi kesalahan saat memproses file. Admin telah diberitahu."
         )
         if 'file_path' in locals() and os.path.exists(file_path):
             os.remove(file_path)
@@ -600,13 +611,13 @@ async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_T
     """Handle second TXT file upload for merging."""
     try:
         if not check_whitelist(update.effective_user.id):
-            await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+            await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return ConversationHandler.END
 
         # Verify first file was uploaded
         if not context.user_data.get('first_file'):
             await update.message.reply_text(
-                "❌ File pertama belum diterima.\n"
+                " File pertama belum diterima.\n"
                 "Silakan mulai ulang dengan /merge_txt"
             )
             return ConversationHandler.END
@@ -620,7 +631,7 @@ async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_T
             if first_file and os.path.exists(first_file):
                 os.remove(first_file)
             await update.message.reply_text(
-                "⏰ Waktu upload telah habis. Silakan mulai ulang dengan /merge_txt"
+                " Waktu upload telah habis. Silakan mulai ulang dengan /merge_txt"
             )
             context.user_data.clear()
             return ConversationHandler.END
@@ -628,7 +639,7 @@ async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_T
         # Validate file type
         if not update.message.document.file_name.lower().endswith('.txt'):
             await update.message.reply_text(
-                "❌ Format file tidak valid. Harap kirim file dengan format .txt"
+                " Format file tidak valid. Harap kirim file dengan format .txt"
             )
             return UPLOAD_SECOND_FILE
 
@@ -636,7 +647,7 @@ async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_T
         file_size = update.message.document.file_size
         if file_size > MAX_FILE_SIZE:
             await update.message.reply_text(
-                f"📛 File terlalu besar. Maksimal ukuran file adalah {MAX_FILE_SIZE // (1024*1024)}MB."
+                f" File terlalu besar. Maksimal ukuran file adalah {MAX_FILE_SIZE // (1024*1024)}MB."
             )
             return ConversationHandler.END
 
@@ -645,7 +656,7 @@ async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_T
         os.makedirs("input_files", exist_ok=True)
         file_path = f"input_files/{update.message.document.file_name}"
         
-        status_msg = await update.message.reply_text("⬇️ Mengunduh file kedua...")
+        status_msg = await update.message.reply_text("Mengunduh file kedua...")
         
         try:
             async with async_timeout.timeout(MAX_DOWNLOAD_TIMEOUT):
@@ -653,14 +664,14 @@ async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_T
                 
                 # Verify file is not empty
                 if os.path.getsize(file_path) == 0:
-                    await status_msg.edit_text("❌ File kosong. Silakan kirim file yang berisi teks.")
+                    await status_msg.edit_text(" File kosong. Silakan kirim file yang berisi teks.")
                     os.remove(file_path)
                     return UPLOAD_SECOND_FILE
 
                 await status_msg.edit_text(
-                    "✅ File kedua berhasil diunduh!\n\n"
+                    " File kedua berhasil diunduh!\n\n"
                     "Langkah terakhir:\n"
-                    "3️⃣ Masukkan nama file hasil gabungan (tanpa ekstensi)\n"
+                    "3. Masukkan nama file hasil gabungan (tanpa ekstensi)\n"
                     "Contoh: merged_file"
                 )
                 
@@ -671,7 +682,7 @@ async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_T
                 return ASK_MERGE_FILENAME
 
         except asyncio.TimeoutError:
-            await status_msg.edit_text("⏰ Waktu unduh habis. Silakan coba lagi dengan file yang lebih kecil.")
+            await status_msg.edit_text(" Waktu unduh habis. Silakan coba lagi dengan file yang lebih kecil.")
             if os.path.exists(file_path):
                 os.remove(file_path)
             return ConversationHandler.END
@@ -679,7 +690,7 @@ async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_T
     except Exception as e:
         await notify_owner_error(context, f"Error in handle_second_txt_file: {str(e)}", update.effective_user.id)
         await update.message.reply_text(
-            "❌ Maaf, terjadi kesalahan saat memproses file. Admin telah diberitahu."
+            " Maaf, terjadi kesalahan saat memproses file. Admin telah diberitahu."
         )
         if 'file_path' in locals() and os.path.exists(file_path):
             os.remove(file_path)
@@ -689,12 +700,12 @@ async def handle_merge_filename(update: Update, context: ContextTypes.DEFAULT_TY
     """Handle merge filename input and process the merge."""
     try:
         if not check_whitelist(update.effective_user.id):
-            await update.message.reply_text(ACCESS_DENIED_MESSAGE)
+            await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return ConversationHandler.END
 
         custom_filename = update.message.text.strip()
         if not custom_filename:
-            await update.message.reply_text("Nama file tidak boleh kosong. Silakan coba lagi.")
+            await update.message.reply_text(ERROR_MESSAGES["empty_filename"])
             return ASK_MERGE_FILENAME
 
         # Get files from context
@@ -800,7 +811,7 @@ async def handle_merge_filename(update: Update, context: ContextTypes.DEFAULT_TY
         error_msg = f"Error in handle_merge_filename: {str(e)}"
         await notify_owner_error(context, error_msg, update.effective_user.id)
         await update.message.reply_text(
-            "❌ Maaf, terjadi kesalahan saat menggabungkan file. Admin telah diberitahu."
+            " Maaf, terjadi kesalahan saat menggabungkan file. Admin telah diberitahu."
         )
         # Cleanup on error
         file1 = context.user_data.get('first_file')
@@ -810,6 +821,25 @@ async def handle_merge_filename(update: Update, context: ContextTypes.DEFAULT_TY
                 os.remove(file)
         context.user_data.clear()
         return ConversationHandler.END
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle errors in the bot."""
+    error = context.error
+    try:
+        if update:
+            user_id = update.effective_user.id if update.effective_user else "Unknown"
+        else:
+            user_id = "Unknown"
+        
+        error_msg = f"An error occurred:\nError: {str(error)}\nUser ID: {user_id}"
+        await notify_owner_error(context, error_msg, user_id if isinstance(user_id, int) else None)
+        
+        if update and update.effective_message:
+            await update.effective_message.reply_text(
+                "Sorry, an error occurred while processing your request. The bot owner has been notified."
+            )
+    except Exception as e:
+        print(f"Error in error handler: {str(e)}")
 
 def main():
     """Start the bot."""
