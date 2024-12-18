@@ -70,12 +70,12 @@ async def log_interaction(update: Update, command: str):
         writer.writerow([timestamp, user_id, username, command, message])
 
 # State for ConversationHandler
-ASK_PATTERN, ASK_SPLIT, ASK_SPLIT_SIZE, ASK_FILENAME = range(4)
+ASK_PATTERN, ASK_SPLIT, ASK_SPLIT_SIZE, ASK_SEQUENCE, ASK_FILENAME = range(5)
 # States for merge conversation
-UPLOAD_FIRST_FILE, UPLOAD_SECOND_FILE, ASK_MERGE_FILENAME = range(4, 7)
+UPLOAD_FIRST_FILE, UPLOAD_SECOND_FILE, ASK_MERGE_FILENAME = range(5, 8)
 # States for create txt conversation
-CREATE_TXT_MESSAGE, CREATE_TXT_FILENAME = range(7, 9)
-UPLOAD_VCF_FILES, ASK_VCF_FILENAME = range(9, 11)
+CREATE_TXT_MESSAGE, CREATE_TXT_FILENAME = range(8, 10)
+UPLOAD_VCF_FILES, ASK_VCF_FILENAME = range(10, 12)
 
 def check_whitelist(user_id: int) -> bool:
     """Check if user is whitelisted and has remaining access"""
@@ -179,13 +179,14 @@ async def set_access_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Batas akses untuk user ID {user_id} telah diatur menjadi {limit}.")
 
 # File conversion functions
-def txt_to_vcf(input_file, output_dir, custom_name_func, split_size, custom_filename):
+def txt_to_vcf(input_file, output_dir, custom_name_func, split_size, custom_filename, sequence_start=1):
     try:
         with open(input_file, 'r', encoding='utf-8') as txt_file:
             lines = [line.strip() for line in txt_file if line.strip()]
 
         os.makedirs(output_dir, exist_ok=True)
-        vcf_data, file_index = [], 1
+        vcf_data = []
+        file_index = sequence_start
 
         for index, line in enumerate(lines, start=1):
             try:
@@ -224,17 +225,17 @@ END:VCARD
         # Return list of created files
         if split_size:
             return [os.path.join(output_dir, f"{custom_filename}{i}.vcf") 
-                    for i in range(1, file_index + (1 if vcf_data else 0))]
+                    for i in range(sequence_start, file_index + (1 if vcf_data else 0))]
         else:
             return [output_file]
     except Exception as e:
         raise Exception(f"Error in txt_to_vcf: {str(e)}")
 
-def excel_to_vcf(input_file, output_dir, custom_name_func, split_size, custom_filename):
+def excel_to_vcf(input_file, output_dir, custom_name_func, split_size, custom_filename, sequence_start=1):
     try:
         df = pd.read_excel(input_file)
         os.makedirs(output_dir, exist_ok=True)
-        vcf_data, file_index = [], 1
+        vcf_data, file_index = [], sequence_start
 
         for index, row in df.iterrows():
             try:
@@ -281,7 +282,7 @@ END:VCARD
         # Return list of created files
         if split_size:
             return [os.path.join(output_dir, f"{custom_filename}{i}.vcf") 
-                    for i in range(1, file_index + (1 if vcf_data else 0))]
+                    for i in range(sequence_start, file_index + (1 if vcf_data else 0))]
         else:
             return [output_file]
     except Exception as e:
@@ -387,8 +388,18 @@ async def handle_split_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ASK_SPLIT_SIZE
     else:
         context.user_data['split_size'] = None
-        await query.message.edit_text("Masukkan nama file output (tanpa ekstensi):")
-        return ASK_FILENAME
+        keyboard = [
+            [
+                InlineKeyboardButton("Ya", callback_data='customize_sequence'),
+                InlineKeyboardButton("Tidak", callback_data='default_sequence')
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text(
+            "Apakah Anda ingin mengkustomisasi nomor urut file?",
+            reply_markup=reply_markup
+        )
+        return ASK_SEQUENCE
 
 async def ask_filename(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await log_interaction(update, 'ask_filename')
@@ -398,11 +409,44 @@ async def ask_filename(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         context.user_data['split_size'] = int(update.message.text)
-        await update.message.reply_text("Masukkan nama dasar untuk file output.")
-        return ASK_FILENAME
+        keyboard = [
+            [
+                InlineKeyboardButton("Ya", callback_data='customize_sequence'),
+                InlineKeyboardButton("Tidak", callback_data='default_sequence')
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "Apakah Anda ingin mengkustomisasi nomor urut file?",
+            reply_markup=reply_markup
+        )
+        return ASK_SEQUENCE
     except ValueError:
         await update.message.reply_text("Masukkan angka yang valid untuk jumlah kontak per file.")
         return ASK_SPLIT_SIZE
+
+async def handle_sequence_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    choice = query.data
+    if choice == 'customize_sequence':
+        await query.message.edit_text("Masukkan nomor urut awal file:")
+        return ASK_SEQUENCE
+    else:
+        context.user_data['sequence_start'] = 1
+        await query.message.edit_text("Masukkan nama file output (tanpa ekstensi):")
+        return ASK_FILENAME
+
+async def handle_sequence_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        sequence_start = int(update.message.text)
+        context.user_data['sequence_start'] = sequence_start
+        await update.message.reply_text("Masukkan nama file output (tanpa ekstensi):")
+        return ASK_FILENAME
+    except ValueError:
+        await update.message.reply_text("Masukkan angka yang valid untuk nomor urut.")
+        return ASK_SEQUENCE
 
 async def generate_vcf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -419,8 +463,12 @@ async def generate_vcf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         input_file = context.user_data['input_file']
         custom_name_pattern = context.user_data['custom_name_pattern']
         split_size = context.user_data.get('split_size')
+        sequence_start = context.user_data.get('sequence_start', 1)
 
-        success = await process_file_conversion(update, context, input_file, custom_name_pattern, split_size, custom_filename)
+        success = await process_file_conversion(
+            update, context, input_file, custom_name_pattern, 
+            split_size, custom_filename, sequence_start
+        )
         if not success:
             return ConversationHandler.END
 
@@ -429,9 +477,7 @@ async def generate_vcf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         error_msg = f"Error in generate_vcf: {str(e)}"
         await notify_owner_error(context, error_msg, update.effective_user.id)
-        await update.message.reply_text(
-            ERROR_MESSAGES["processing_error"]
-        )
+        await update.message.reply_text(ERROR_MESSAGES["processing_error"])
         return ConversationHandler.END
 
 async def notify_owner_error(context: ContextTypes.DEFAULT_TYPE, error_msg: str, user_id: int = None):
@@ -478,7 +524,8 @@ async def safe_file_download(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return None, False
 
 async def process_file_conversion(update: Update, context: ContextTypes.DEFAULT_TYPE, input_file: str, 
-                                custom_name_pattern: str, split_size: int, custom_filename: str) -> bool:
+                                custom_name_pattern: str, split_size: int, custom_filename: str,
+                                sequence_start: int = 1) -> bool:
     """Process file conversion with proper error handling"""
     try:
         status_msg = await update.message.reply_text("Sedang memproses file...")
@@ -487,12 +534,12 @@ async def process_file_conversion(update: Update, context: ContextTypes.DEFAULT_
         def convert_file():
             if input_file.lower().endswith('.txt'):
                 return txt_to_vcf(input_file, OUTPUT_DIR, lambda i: custom_name_pattern.replace("{index}", str(i)),
-                                split_size, custom_filename)
+                                split_size, custom_filename, sequence_start)
             elif input_file.lower().endswith(('.xlsx', '.xls')):
                 return excel_to_vcf(input_file, OUTPUT_DIR, lambda i: custom_name_pattern.replace("{index}", str(i)),
-                                  split_size, custom_filename)
+                                  split_size, custom_filename, sequence_start)
             else:
-                raise ValueError(ERROR_MESSAGES["unsupported_format"])
+                raise ValueError("Format file tidak didukung")
 
         # Run conversion in thread pool
         with ThreadPoolExecutor() as pool:
@@ -1218,10 +1265,11 @@ def main():
             ASK_PATTERN: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_split)],
             ASK_SPLIT: [CallbackQueryHandler(handle_split_choice)],
             ASK_SPLIT_SIZE: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_filename)],
-            ASK_FILENAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_vcf)],
-            UPLOAD_FIRST_FILE: [MessageHandler(filters.Document.FileExtension("txt") & filters.ChatType.PRIVATE, handle_first_txt_file)],
-            UPLOAD_SECOND_FILE: [MessageHandler(filters.Document.FileExtension("txt") & filters.ChatType.PRIVATE, handle_second_txt_file)],
-            ASK_MERGE_FILENAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_merge_filename)],
+            ASK_SEQUENCE: [
+                CallbackQueryHandler(handle_sequence_choice),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_sequence_number)
+            ],
+            ASK_FILENAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, generate_vcf)]
         },
         fallbacks=[],
     )
