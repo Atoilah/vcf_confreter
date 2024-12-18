@@ -75,3 +75,8 @@ class UserManager:
             return False
 
         return True
+
+    def is_owner(self, user_id: int) -> bool:
+        """Check if the user is the owner."""
+        owner_id = os.getenv("OWNER_ID")
+        return str(user_id) == owner_id

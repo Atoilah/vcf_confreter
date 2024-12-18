@@ -1,0 +1,14 @@
+[Unit]
+Description=Telegram Contact Converter Bot
+After=network.target
+
+[Service]
+Type=simple
+User=kepesenggg
+WorkingDirectory=/home/kepesenggg/bot_tele/payment/vcf_confreter
+ExecStart=/usr/bin/python3 /home/kepesenggg/bot_tele/payment/vcf_confreter/bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

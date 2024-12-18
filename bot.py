@@ -12,6 +12,10 @@ import asyncio
 import csv
 import time
 from concurrent.futures import ThreadPoolExecutor
+import sys
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from telegram.error import TelegramError
 
 # Load environment variables
 load_dotenv()
@@ -102,7 +106,7 @@ async def get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     await update.message.reply_text(f"ID Anda adalah: {user_id}")
 
-async def check_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def checklimit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await log_interaction(update, '/checklimit')
     user_id = update.effective_user.id
     limit = user_manager.get_access_limit(user_id)
@@ -210,13 +214,19 @@ END:VCARD
                 print(f"Baris tidak valid, dilewati: {e}")
 
         if vcf_data:
-            output_file = os.path.join(output_dir, f"{custom_filename}{file_index}.vcf")
+            if split_size:
+                output_file = os.path.join(output_dir, f"{custom_filename}{file_index}.vcf")
+            else:
+                output_file = os.path.join(output_dir, f"{custom_filename}.vcf")
             with open(output_file, 'w', encoding='utf-8') as vcf_file:
                 vcf_file.write(''.join(vcf_data))
-            
+
         # Return list of created files
-        return [os.path.join(output_dir, f"{custom_filename}{i}.vcf") 
-                for i in range(1, file_index + (1 if vcf_data else 0))]
+        if split_size:
+            return [os.path.join(output_dir, f"{custom_filename}{i}.vcf") 
+                    for i in range(1, file_index + (1 if vcf_data else 0))]
+        else:
+            return [output_file]
     except Exception as e:
         raise Exception(f"Error in txt_to_vcf: {str(e)}")
 
@@ -261,13 +271,19 @@ END:VCARD
                 print(f"Baris tidak valid, dilewati: {e}")
 
         if vcf_data:
-            output_file = os.path.join(output_dir, f"{custom_filename}{file_index}.vcf")
+            if split_size:
+                output_file = os.path.join(output_dir, f"{custom_filename}{file_index}.vcf")
+            else:
+                output_file = os.path.join(output_dir, f"{custom_filename}.vcf")
             with open(output_file, 'w', encoding='utf-8') as vcf_file:
                 vcf_file.write(''.join(vcf_data))
 
         # Return list of created files
-        return [os.path.join(output_dir, f"{custom_filename}{i}.vcf") 
-                for i in range(1, file_index + (1 if vcf_data else 0))]
+        if split_size:
+            return [os.path.join(output_dir, f"{custom_filename}{i}.vcf") 
+                    for i in range(1, file_index + (1 if vcf_data else 0))]
+        else:
+            return [output_file]
     except Exception as e:
         raise Exception(f"Error in excel_to_vcf: {str(e)}")
 
@@ -500,8 +516,15 @@ async def process_file_conversion(update: Update, context: ContextTypes.DEFAULT_
                 continue
 
         # Cleanup
-        cleanup_files([input_file] + result_files)
-        
+        try:
+            if os.path.exists(input_file):
+                os.remove(input_file)
+            for file_path in result_files:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+        except Exception as e:
+            await notify_owner_error(context, f"Error during cleanup: {str(e)}", update.effective_user.id)
+
         # Update access limit
         user_manager.decrement_access_limit(update.effective_user.id)
         
@@ -681,7 +704,7 @@ async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_T
             )
             context.user_data.clear()
             return ConversationHandler.END
-
+            
         # Validate file type
         if not update.message.document.file_name.lower().endswith('.txt'):
             await update.message.reply_text(
@@ -1076,7 +1099,7 @@ async def broadcast_startup(application):
     users = user_manager.get_all_users()
     
     startup_message = (
-        "🤖 Bot telah aktif dan siap digunakan!\n\n"
+        " Bot telah aktif dan siap digunakan!\n\n"
         "Fitur yang tersedia:\n"
         "- /start - Melihat menu utama\n"
         "- /txt_to_vcf - Konversi file .txt ke .vcf\n"
@@ -1084,7 +1107,7 @@ async def broadcast_startup(application):
         "- /merge_txt - Gabungkan 2 file .txt\n"
         "- /merge_vcf - Gabungkan file .vcf\n"
         "- /create_txt - Buat file txt dari pesan\n"
-        "- /check_limit - Cek sisa limit Anda\n\n"
+        "- /checklimit - Cek sisa limit Anda\n\n"
         "Jika ada pertanyaan, silakan hubungi admin @{}"
     ).format(OWNER_USERNAME)
     
@@ -1098,7 +1121,7 @@ async def broadcast_bot_dead(application):
     """Broadcast a message to all whitelisted users that the bot is dead"""
     users = user_manager.get_all_users()
     dead_message = (
-        "❌ Bot saat ini tidak aktif dan tidak dapat digunakan."
+        " Bot saat ini tidak aktif dan tidak dapat digunakan."
         "\nSilakan coba lagi nanti atau hubungi admin @{} jika Anda memerlukan bantuan."
     ).format(OWNER_USERNAME)
     
@@ -1111,6 +1134,67 @@ async def broadcast_bot_dead(application):
 async def post_init(application):
     """Post initialization hook to send startup broadcast"""
     await broadcast_startup(application)
+
+async def clean_junk_files_and_logs():
+    """Clean up junk files and logs."""
+    junk_files = ["/path/to/junk1", "/path/to/junk2"]  # Example paths
+    for file_path in junk_files:
+        try:
+            os.remove(file_path)
+            print(f"Removed junk file: {file_path}")
+        except Exception as e:
+            print(f"Failed to remove {file_path}: {str(e)}")
+
+async def restart_bot():
+    """Restart the bot."""
+    print("Restarting bot...")
+    os.execv(__file__, sys.argv)  # Restart the script
+
+async def broadcast_message(application, message):
+    """Broadcast a custom message to all whitelisted users."""
+    users = user_manager.get_all_users()
+    for user_id in users:
+        try:
+            await application.bot.send_message(chat_id=int(user_id), text=message)
+        except TelegramError as e:
+            # Log the error and continue with the next user
+            print(f"Skipping user {user_id}: {str(e)}")
+            continue
+        except Exception as e:
+            # Log any other exceptions and continue
+            print(f"Failed to send message to user {user_id}: {str(e)}")
+            continue
+
+# Example usage of broadcast_message
+# await broadcast_message(application, "This is a broadcast message from the owner.")
+
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Allow the owner to broadcast a message to all users via a command."""
+    user_id = update.effective_user.id
+    if user_manager.is_owner(user_id):
+        if context.args:
+            message = ' '.join(context.args)
+            await broadcast_message(context.application, message)
+            await update.message.reply_text("Broadcast message sent.")
+        else:
+            await update.message.reply_text("Please provide a message to broadcast.")
+    else:
+        await update.message.reply_text("You are not authorized to perform this action.")
+
+async def restart_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Restart the bot via a Telegram command."""
+    user_id = update.effective_user.id
+    if user_manager.is_owner(user_id):  # Assuming a function to check if the user is the owner
+        await update.message.reply_text("Restarting bot...")
+        restart_bot()
+    else:
+        await update.message.reply_text("You are not authorized to perform this action.")
+
+class RestartOnChangeHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if event.src_path.endswith(".py"):
+            print(f"Detected change in {event.src_path}. Restarting bot...")
+            restart_bot()
 
 def main():
     """Start the bot."""
@@ -1144,7 +1228,7 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("getid", get_id))
-    application.add_handler(CommandHandler("checklimit", check_limit))
+    application.add_handler(CommandHandler("checklimit", checklimit))
     application.add_handler(CommandHandler("add", add_to_whitelist))
     application.add_handler(CommandHandler("remove", remove_from_whitelist))
     application.add_handler(CommandHandler("setlimit", set_access_limit))
@@ -1172,11 +1256,22 @@ def main():
     application.add_handler(merge_vcf_conv_handler)
 
     application.add_handler(CommandHandler("view_logs", view_logs))
+    application.add_handler(CommandHandler("restart", restart_command))
+    application.add_handler(CommandHandler("broadcast", broadcast_command))
 
     print("Bot berjalan...")
     
-    # Start the bot
-    application.run_polling(drop_pending_updates=True)
+    # Setup file watcher
+    observer = Observer()
+    observer.schedule(RestartOnChangeHandler(), path='.', recursive=True)
+    observer.start()
+
+    try:
+        # Start the bot
+        application.run_polling(drop_pending_updates=True)
+    finally:
+        observer.stop()
+        observer.join()
 
 if __name__ == "__main__":
     main()
