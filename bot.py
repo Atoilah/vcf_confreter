@@ -28,7 +28,7 @@ INPUT_DIR = "input_files"
 
 # Error messages
 ERROR_MESSAGES = {
-    "access_denied": "Anda tidak memiliki akses ke bot ini. Hubungi admin {} untuk mendapatkan akses bot",
+    "access_denied": "Anda tidak memiliki akses ke bot ini. Hubungi admin @{} untuk mendapatkan akses bot",
     "file_too_large": "File terlalu besar. Maksimal ukuran file adalah {}MB.",
     "download_timeout": "Waktu unduh habis. Silakan coba lagi dengan file yang lebih kecil.",
     "processing_error": "Maaf, terjadi kesalahan saat memproses file. Admin telah diberitahu.",
@@ -49,6 +49,8 @@ for directory in [DOWNLOAD_DIR, OUTPUT_DIR, INPUT_DIR]:
 ASK_PATTERN, ASK_SPLIT, ASK_SPLIT_SIZE, ASK_FILENAME = range(4)
 # States for merge conversation
 UPLOAD_FIRST_FILE, UPLOAD_SECOND_FILE, ASK_MERGE_FILENAME = range(4, 7)
+# States for create txt conversation
+CREATE_TXT_MESSAGE, CREATE_TXT_FILENAME = range(7, 9)
 
 def check_whitelist(user_id: int) -> bool:
     """Check if user is whitelisted and has remaining access"""
@@ -67,6 +69,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- /txt_to_vcf: Konversi file .txt ke .vcf\n"
         "- /excel_to_vcf: Konversi file .xlsx ke .vcf\n"
         "- /merge_txt: Gabungkan 2 file .txt\n"
+        "- /create_txt: Buat file txt dari pesan\n"
         "Silakan ketik salah satu perintah untuk memulai."
     )
 
@@ -800,6 +803,7 @@ async def handle_merge_filename(update: Update, context: ContextTypes.DEFAULT_TY
         # Update access limit
         user_id = update.effective_user.id
         user_manager.decrement_access_limit(user_id)
+        current_limit = user_manager.get_access_limit(user_id)
 
         # Clear user data
         context.user_data.clear()
@@ -841,11 +845,122 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except Exception as e:
         print(f"Error in error handler: {str(e)}")
 
+async def create_txt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /create_txt command"""
+    if not check_whitelist(update.effective_user.id):
+        await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
+        return ConversationHandler.END
+    
+    await update.message.reply_text("Silakan kirim pesan yang ingin Anda jadikan file txt:")
+    return CREATE_TXT_MESSAGE
+
+async def handle_txt_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the message content for txt creation"""
+    message = update.message.text
+    context.user_data['txt_content'] = message
+    
+    await update.message.reply_text("Masukkan nama file untuk menyimpan pesan Anda (tanpa ekstensi .txt):")
+    return CREATE_TXT_FILENAME
+
+async def save_txt_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Save the message as a txt file"""
+    filename = update.message.text.strip()
+    if not filename:
+        await update.message.reply_text(ERROR_MESSAGES["empty_filename"])
+        return CREATE_TXT_FILENAME
+    
+    # Add .txt extension if not present
+    if not filename.endswith('.txt'):
+        filename = f"{filename}.txt"
+    
+    file_path = os.path.join(OUTPUT_DIR, filename)
+    temp_msg = None
+    
+    try:
+        # Send a temporary message to show progress
+        temp_msg = await update.message.reply_text("Sedang membuat file txt...")
+        
+        # Write content to file
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(context.user_data['txt_content'])
+        
+        # Reduce user's access limit
+        user_id = update.effective_user.id
+        user_manager.decrement_access_limit(user_id)
+        current_limit = user_manager.get_access_limit(user_id)
+        
+        # Send the file using chunks to prevent timeout
+        try:
+            with open(file_path, 'rb') as f:
+                await update.message.reply_document(
+                    document=f,
+                    filename=filename,
+                    caption=f"File txt berhasil dibuat! Sisa limit Anda: {current_limit}",
+                    read_timeout=30,
+                    write_timeout=30
+                )
+        except Exception as send_error:
+            await update.message.reply_text(
+                "Gagal mengirim file. Silakan coba lagi dengan pesan yang lebih pendek."
+            )
+            raise send_error
+            
+    except Exception as e:
+        error_msg = f"Terjadi kesalahan saat membuat file txt: {str(e)}"
+        await update.message.reply_text(error_msg)
+        await notify_owner_error(context, str(e), update.effective_user.id)
+        
+    finally:
+        # Clean up
+        if temp_msg:
+            try:
+                await temp_msg.delete()
+            except:
+                pass
+                
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except:
+                pass
+        
+        # Clear user data
+        if 'txt_content' in context.user_data:
+            del context.user_data['txt_content']
+    
+    return ConversationHandler.END
+
+async def broadcast_startup(application):
+    """Broadcast startup message to all whitelisted users"""
+    users = user_manager.get_all_users()
+    
+    startup_message = (
+        "🤖 Bot telah aktif dan siap digunakan!\n\n"
+        "Fitur yang tersedia:\n"
+        "- /start - Melihat menu utama\n"
+        "- /txt_to_vcf - Konversi file .txt ke .vcf\n"
+        "- /excel_to_vcf - Konversi file .xlsx ke .vcf\n"
+        "- /merge_txt - Gabungkan 2 file .txt\n"
+        "- /create_txt - Buat file txt dari pesan\n"
+        "- /check_limit - Cek sisa limit Anda\n\n"
+        "Jika ada pertanyaan, silakan hubungi admin @{}"
+    ).format(OWNER_USERNAME)
+    
+    for user_id in users:
+        try:
+            await application.bot.send_message(chat_id=int(user_id), text=startup_message)
+        except Exception as e:
+            print(f"Failed to send startup message to user {user_id}: {str(e)}")
+
+async def post_init(application):
+    """Post initialization hook to send startup broadcast"""
+    await broadcast_startup(application)
+
 def main():
     """Start the bot."""
     # Create the Application
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-
+    application = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
+    
     # Add error handler
     application.add_error_handler(error_handler)
 
@@ -880,7 +995,19 @@ def main():
     application.add_handler(CommandHandler("whitelist", show_whitelist))
     application.add_handler(conv_handler)
 
+    create_txt_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("create_txt", create_txt_handler)],
+        states={
+            CREATE_TXT_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_txt_message)],
+            CREATE_TXT_FILENAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_txt_message)]
+        },
+        fallbacks=[],
+    )
+    application.add_handler(create_txt_conv_handler)
+
     print("Bot berjalan...")
+    
+    # Start the bot
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
