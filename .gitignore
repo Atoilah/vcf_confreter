@@ -2,3 +2,5 @@
 input_files/
 output_vcf/
 output_merged/
+nohup.out
+__pycache__
