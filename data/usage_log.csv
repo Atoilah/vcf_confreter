@@ -1,0 +1,67 @@
+timestamp,user_id,username,command,message
+2024-12-18 05:36:59,7915561803,Byuhhhhhh,/getid,/getid
+2024-12-18 05:37:10,7915561803,Byuhhhhhh,/setlimit,/setlimit 7915561803 100
+2024-12-18 05:37:20,7915561803,Byuhhhhhh,/view_logs,/view_logs
+2024-12-18 05:37:34,7915561803,Byuhhhhhh,/txt_to_vcf,/txt_to_vcf
+2024-12-18 05:37:42,7915561803,Byuhhhhhh,handle_txt_file,
+2024-12-18 05:37:49,7915561803,Byuhhhhhh,ask_split,asa
+2024-12-18 05:37:50,7915561803,Byuhhhhhh,handle_split_choice,
+2024-12-18 05:37:54,7915561803,Byuhhhhhh,generate_vcf,asas
+2024-12-18 05:39:39,7915561803,Byuhhhhhh,/txt_to_vcf,/txt_to_vcf
+2024-12-18 05:39:46,7915561803,Byuhhhhhh,handle_txt_file,
+2024-12-18 05:40:15,7915561803,Byuhhhhhh,ask_split,sasa
+2024-12-18 05:40:18,7915561803,Byuhhhhhh,handle_split_choice,
+2024-12-18 05:40:22,7915561803,Byuhhhhhh,generate_vcf,asu
+2024-12-18 05:40:56,7915561803,Byuhhhhhh,/excel_to_vcf,/excel_to_vcf
+2024-12-18 05:41:05,7915561803,Byuhhhhhh,handle_excel_file,
+2024-12-18 05:41:10,7915561803,Byuhhhhhh,ask_split,hooh
+2024-12-18 05:41:13,7915561803,Byuhhhhhh,handle_split_choice,
+2024-12-18 05:41:19,7915561803,Byuhhhhhh,generate_vcf,100
+2024-12-18 05:41:31,7915561803,Byuhhhhhh,/merge_txt,/merge_txt
+2024-12-18 05:41:42,7915561803,Byuhhhhhh,handle_first_txt_file,
+2024-12-18 05:41:52,7915561803,Byuhhhhhh,handle_second_txt_file,
+2024-12-18 05:42:03,7915561803,Byuhhhhhh,/merge_txt,/merge_txt
+2024-12-18 05:42:10,7915561803,Byuhhhhhh,handle_first_txt_file,
+2024-12-18 05:43:13,7915561803,Byuhhhhhh,/merge_txt,/merge_txt
+2024-12-18 05:43:21,7915561803,Byuhhhhhh,handle_first_txt_file,
+2024-12-18 05:43:29,7915561803,Byuhhhhhh,handle_second_txt_file,
+2024-12-18 05:43:36,7915561803,Byuhhhhhh,handle_merge_filename,ssas
+2024-12-18 05:43:44,7915561803,Byuhhhhhh,/merge_vcf,/merge_vcf
+2024-12-18 05:43:52,7915561803,Byuhhhhhh,handle_vcf_file,
+2024-12-18 05:44:01,7915561803,Byuhhhhhh,handle_vcf_file,
+2024-12-18 05:44:10,7915561803,Byuhhhhhh,handle_vcf_file,
+2024-12-18 05:44:13,7915561803,Byuhhhhhh,/done,/done
+2024-12-18 05:44:16,7915561803,Byuhhhhhh,merge_vcf_files,wasuiu
+2024-12-18 05:44:46,7915561803,Byuhhhhhh,/start,/start
+2024-12-18 05:44:50,7915561803,Byuhhhhhh,/create_txt,/create_txt
+2024-12-18 05:44:58,7915561803,Byuhhhhhh,handle_txt_message,Error in file conversion: name 'ThreadPoolExecutor' is not defined
+2024-12-18 05:45:02,7915561803,Byuhhhhhh,save_txt_message,aseu
+2024-12-18 05:53:33,7915561803,Byuhhhhhh,/view_logs,/view_logs
+2024-12-18 06:16:35,2104624572,Vandettaaaaa,/excel_to_vcf,/excel_to_vcf
+2024-12-18 06:16:47,2104624572,Vandettaaaaa,handle_txt_file,
+2024-12-18 06:16:53,2104624572,Vandettaaaaa,ask_split,ADMIN
+2024-12-18 06:16:55,2104624572,Vandettaaaaa,handle_split_choice,
+2024-12-18 06:16:59,7915561803,Byuhhhhhh,/view_logs,/view_logs
+2024-12-18 06:17:00,2104624572,Vandettaaaaa,generate_vcf,ADMIN
+2024-12-18 06:17:16,2104624572,Vandettaaaaa,/txt_to_vcf,/txt_to_vcf
+2024-12-18 06:17:23,2104624572,Vandettaaaaa,handle_txt_file,
+2024-12-18 06:17:29,2104624572,Vandettaaaaa,ask_split,Navy
+2024-12-18 06:17:31,2104624572,Vandettaaaaa,handle_split_choice,
+2024-12-18 06:17:36,2104624572,Vandettaaaaa,generate_vcf,NAVY
+2024-12-18 06:17:44,2104624572,Vandettaaaaa,/merge_vcf,/merge_vcf
+2024-12-18 06:17:59,2104624572,Vandettaaaaa,handle_vcf_file,
+2024-12-18 06:18:00,2104624572,Vandettaaaaa,handle_vcf_file,
+2024-12-18 06:18:04,2104624572,Vandettaaaaa,/done,/done
+2024-12-18 06:18:15,2104624572,Vandettaaaaa,merge_vcf_files,ADMIN 1-20
+2024-12-18 06:21:18,2104624572,Vandettaaaaa,/txt_to_vcf,/txt_to_vcf
+2024-12-18 06:21:26,2104624572,Vandettaaaaa,handle_txt_file,
+2024-12-18 06:21:35,2104624572,Vandettaaaaa,ask_split,DOTOL
+2024-12-18 06:21:37,2104624572,Vandettaaaaa,handle_split_choice,
+2024-12-18 06:21:40,2104624572,Vandettaaaaa,ask_filename,100
+2024-12-18 06:21:52,2104624572,Vandettaaaaa,generate_vcf,HR
+2024-12-18 06:23:55,2104624572,Vandettaaaaa,/txt_to_vcf,/txt_to_vcf
+2024-12-18 06:24:00,2104624572,Vandettaaaaa,handle_txt_file,
+2024-12-18 06:24:07,2104624572,Vandettaaaaa,ask_split,DETTA
+2024-12-18 06:24:09,2104624572,Vandettaaaaa,handle_split_choice,
+2024-12-18 06:24:17,2104624572,Vandettaaaaa,ask_filename,20
+2024-12-18 06:24:32,2104624572,Vandettaaaaa,generate_vcf,Grupo de finanzas YL

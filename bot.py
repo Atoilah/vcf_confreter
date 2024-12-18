@@ -9,8 +9,9 @@ from telegram.ext import (
 from user_manager import UserManager
 import async_timeout
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+import csv
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 # Load environment variables
 load_dotenv()
@@ -42,8 +43,27 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB max file size
 FILE_UPLOAD_TIMEOUT = 60  # 1 minute timeout for file uploads
 
 # Create necessary directories
-for directory in [DOWNLOAD_DIR, OUTPUT_DIR, INPUT_DIR]:
+for directory in [DOWNLOAD_DIR, OUTPUT_DIR, INPUT_DIR, 'data']:
     os.makedirs(directory, exist_ok=True)
+
+# Log user interactions
+LOG_FILE = os.path.join('data', 'usage_log.csv')
+
+# Ensure log file exists
+if not os.path.exists(LOG_FILE):
+    with open(LOG_FILE, 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['timestamp', 'user_id', 'username', 'command', 'message'])
+
+async def log_interaction(update: Update, command: str):
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    message = update.message.text if update.message else ''
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+    
+    with open(LOG_FILE, 'a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow([timestamp, user_id, username, command, message])
 
 # State for ConversationHandler
 ASK_PATTERN, ASK_SPLIT, ASK_SPLIT_SIZE, ASK_FILENAME = range(4)
@@ -61,6 +81,7 @@ def check_whitelist(user_id: int) -> bool:
     return limit is not None and limit > 0
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, '/start')
     if not check_whitelist(update.effective_user.id):
         await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
@@ -77,10 +98,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, '/getid')
     user_id = update.effective_user.id
     await update.message.reply_text(f"ID Anda adalah: {user_id}")
 
 async def check_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, '/checklimit')
     user_id = update.effective_user.id
     limit = user_manager.get_access_limit(user_id)
     
@@ -90,6 +113,7 @@ async def check_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Batas akses Anda tersisa: {limit}")
 
 async def show_whitelist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, '/whitelist')
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("Hanya pemilik bot yang dapat melihat daftar whitelist.")
         return
@@ -103,6 +127,7 @@ async def show_whitelist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(whitelist_info)
 
 async def add_to_whitelist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, '/add')
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("Hanya pemilik bot yang dapat menambahkan pengguna ke whitelist.")
         return
@@ -119,6 +144,7 @@ async def add_to_whitelist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("User ID sudah ada di whitelist.")
 
 async def remove_from_whitelist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, '/remove')
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("Hanya pemilik bot yang dapat menghapus pengguna dari whitelist.")
         return
@@ -134,6 +160,7 @@ async def remove_from_whitelist(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("User ID tidak ada di whitelist.")
 
 async def set_access_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, '/setlimit')
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("Hanya pemilik bot yang dapat mengatur batas akses.")
         return
@@ -246,6 +273,7 @@ END:VCARD
 
 # File handlers
 async def txt_to_vcf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, '/txt_to_vcf')
     if not check_whitelist(update.effective_user.id):
         await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
@@ -253,6 +281,7 @@ async def txt_to_vcf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("Silakan unggah file .txt untuk dikonversi ke .vcf.")
 
 async def excel_to_vcf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, '/excel_to_vcf')
     if not check_whitelist(update.effective_user.id):
         await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
@@ -262,6 +291,7 @@ async def excel_to_vcf_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 async def handle_txt_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle uploaded TXT files."""
     try:
+        await log_interaction(update, 'handle_txt_file')
         if not check_whitelist(update.effective_user.id):
             await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return
@@ -287,6 +317,7 @@ async def handle_txt_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_excel_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle uploaded Excel files."""
     try:
+        await log_interaction(update, 'handle_excel_file')
         if not check_whitelist(update.effective_user.id):
             await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return
@@ -310,6 +341,7 @@ async def handle_excel_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def ask_split(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, 'ask_split')
     if not check_whitelist(update.effective_user.id):
         await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
@@ -329,6 +361,7 @@ async def ask_split(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ASK_SPLIT
 
 async def handle_split_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, 'handle_split_choice')
     query = update.callback_query
     await query.answer()
     
@@ -342,6 +375,7 @@ async def handle_split_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ASK_FILENAME
 
 async def ask_filename(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await log_interaction(update, 'ask_filename')
     if not check_whitelist(update.effective_user.id):
         await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
@@ -356,6 +390,7 @@ async def ask_filename(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def generate_vcf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        await log_interaction(update, 'generate_vcf')
         if not check_whitelist(update.effective_user.id):
             await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return
@@ -515,6 +550,7 @@ def merge_txt_files(file1_path, file2_path, output_dir, custom_filename="merged"
 
 async def merge_txt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /merge_txt command."""
+    await log_interaction(update, '/merge_txt')
     if not check_whitelist(update.effective_user.id):
         await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
@@ -522,7 +558,9 @@ async def merge_txt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         " Proses penggabungan file TXT dimulai:\n\n"
         "1. Kirim file TXT pertama\n"
-        " Anda memiliki waktu 1 menit untuk mengirim setiap file."
+        "2. Kirim file TXT kedua\n"
+        "3. Masukkan nama file hasil gabungan (tanpa ekstensi)\n"
+        "Contoh: merged_file"
     )
     context.user_data['merge_mode'] = True
     context.user_data['upload_time'] = time.time()
@@ -531,6 +569,7 @@ async def merge_txt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_first_txt_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle first TXT file upload for merging."""
     try:
+        await log_interaction(update, 'handle_first_txt_file')
         if not check_whitelist(update.effective_user.id):
             await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return ConversationHandler.END
@@ -616,6 +655,7 @@ async def handle_first_txt_file(update: Update, context: ContextTypes.DEFAULT_TY
 async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle second TXT file upload for merging."""
     try:
+        await log_interaction(update, 'handle_second_txt_file')
         if not check_whitelist(update.effective_user.id):
             await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return ConversationHandler.END
@@ -705,6 +745,7 @@ async def handle_second_txt_file(update: Update, context: ContextTypes.DEFAULT_T
 async def handle_merge_filename(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle merge filename input and process the merge."""
     try:
+        await log_interaction(update, 'handle_merge_filename')
         if not check_whitelist(update.effective_user.id):
             await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
             return ConversationHandler.END
@@ -788,7 +829,7 @@ async def handle_merge_filename(update: Update, context: ContextTypes.DEFAULT_TY
                         write_timeout=30
                     )
             except Exception as e:
-                await notify_owner_error(context, f"Error sending merged file {file_path}: {str(e)}", update.effective_user.id)
+                await notify_owner_error(context, f"Error sending file {file_path}: {str(e)}", update.effective_user.id)
                 continue
 
         # Cleanup
@@ -850,6 +891,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def create_txt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /create_txt command"""
+    await log_interaction(update, '/create_txt')
     if not check_whitelist(update.effective_user.id):
         await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return ConversationHandler.END
@@ -859,6 +901,7 @@ async def create_txt_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def handle_txt_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the message content for txt creation"""
+    await log_interaction(update, 'handle_txt_message')
     message = update.message.text
     context.user_data['txt_content'] = message
     
@@ -867,6 +910,7 @@ async def handle_txt_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def save_txt_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Save the message as a txt file"""
+    await log_interaction(update, 'save_txt_message')
     filename = update.message.text.strip()
     if not filename:
         await update.message.reply_text(ERROR_MESSAGES["empty_filename"])
@@ -935,6 +979,7 @@ async def save_txt_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def merge_vcf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /merge_vcf command to start merging VCF files."""
+    await log_interaction(update, '/merge_vcf')
     if not check_whitelist(update.effective_user.id):
         await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return ConversationHandler.END
@@ -952,6 +997,7 @@ async def merge_vcf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_vcf_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle each VCF file upload."""
+    await log_interaction(update, 'handle_vcf_file')
     if not check_whitelist(update.effective_user.id):
         await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return ConversationHandler.END
@@ -974,6 +1020,7 @@ async def handle_vcf_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def finish_vcf_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Finish uploading VCF files and ask for output file name."""
+    await log_interaction(update, '/done')
     if not context.user_data.get('vcf_files'):
         await update.message.reply_text("Anda belum mengunggah file VCF apapun.")
         return UPLOAD_VCF_FILES
@@ -983,6 +1030,7 @@ async def finish_vcf_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def merge_vcf_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Merge uploaded VCF files into one with a custom name."""
+    await log_interaction(update, 'merge_vcf_files')
     custom_filename = update.message.text.strip()
     if not custom_filename:
         await update.message.reply_text(ERROR_MESSAGES["empty_filename"])
@@ -1009,6 +1057,19 @@ async def merge_vcf_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
     os.remove(output_file_path)
 
     return ConversationHandler.END
+
+async def view_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /view_logs command to view user interaction logs."""
+    await log_interaction(update, '/view_logs')
+    user_id = update.effective_user.id
+    if user_id != OWNER_ID:
+        await update.message.reply_text("You are not authorized to view the logs.")
+        return
+
+    with open(LOG_FILE, 'r') as file:
+        logs = file.read()
+
+    await update.message.reply_text(f"Logs:\n{logs}")
 
 async def broadcast_startup(application):
     """Broadcast startup message to all whitelisted users"""
@@ -1109,6 +1170,8 @@ def main():
         fallbacks=[],
     )
     application.add_handler(merge_vcf_conv_handler)
+
+    application.add_handler(CommandHandler("view_logs", view_logs))
 
     print("Bot berjalan...")
     
