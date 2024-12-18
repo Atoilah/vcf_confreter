@@ -51,6 +51,7 @@ ASK_PATTERN, ASK_SPLIT, ASK_SPLIT_SIZE, ASK_FILENAME = range(4)
 UPLOAD_FIRST_FILE, UPLOAD_SECOND_FILE, ASK_MERGE_FILENAME = range(4, 7)
 # States for create txt conversation
 CREATE_TXT_MESSAGE, CREATE_TXT_FILENAME = range(7, 9)
+UPLOAD_VCF_FILES, ASK_VCF_FILENAME = range(9, 11)
 
 def check_whitelist(user_id: int) -> bool:
     """Check if user is whitelisted and has remaining access"""
@@ -69,6 +70,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- /txt_to_vcf: Konversi file .txt ke .vcf\n"
         "- /excel_to_vcf: Konversi file .xlsx ke .vcf\n"
         "- /merge_txt: Gabungkan 2 file .txt\n"
+        "- /merge_vcf: Gabungkan file .vcf\n"
         "- /create_txt: Buat file txt dari pesan\n"
         "Silakan ketik salah satu perintah untuk memulai.\n"
         "nb: Bot ini masih dalam tahap pengembangan. Jika Anda mengalami kesulitan, silakan hubungi admin @{}.".format(OWNER_USERNAME)
@@ -931,6 +933,83 @@ async def save_txt_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return ConversationHandler.END
 
+async def merge_vcf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /merge_vcf command to start merging VCF files."""
+    if not check_whitelist(update.effective_user.id):
+        await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
+        return ConversationHandler.END
+    
+    await update.message.reply_text(
+        "Proses penggabungan file VCF dimulai:\n\n"
+        "1. Kirim file VCF pertama\n"
+        "2. Kirim file VCF kedua\n"
+        "3. Kirim file VCF tambahan jika ada\n"
+        "4. Ketik /done ketika semua file telah diunggah\n"
+        "5. Masukkan nama file output yang diinginkan"
+    )
+    context.user_data['vcf_files'] = []
+    return UPLOAD_VCF_FILES
+
+async def handle_vcf_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle each VCF file upload."""
+    if not check_whitelist(update.effective_user.id):
+        await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
+        return ConversationHandler.END
+
+    # Validate file type
+    if not update.message.document.file_name.lower().endswith('.vcf'):
+        await update.message.reply_text("Format file tidak valid. Harap kirim file dengan format .vcf")
+        return UPLOAD_VCF_FILES
+
+    # Download file
+    file = await update.message.document.get_file()
+    os.makedirs("input_files", exist_ok=True)
+    file_path = f"input_files/{update.message.document.file_name}"
+    await file.download_to_drive(file_path)
+    
+    # Store file path
+    context.user_data['vcf_files'].append(file_path)
+    await update.message.reply_text("File VCF berhasil diunggah. Kirim file berikutnya atau ketik /done jika selesai.")
+    return UPLOAD_VCF_FILES
+
+async def finish_vcf_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Finish uploading VCF files and ask for output file name."""
+    if not context.user_data.get('vcf_files'):
+        await update.message.reply_text("Anda belum mengunggah file VCF apapun.")
+        return UPLOAD_VCF_FILES
+
+    await update.message.reply_text("Masukkan nama file output untuk file VCF yang digabungkan (tanpa ekstensi):")
+    return ASK_VCF_FILENAME
+
+async def merge_vcf_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Merge uploaded VCF files into one with a custom name."""
+    custom_filename = update.message.text.strip()
+    if not custom_filename:
+        await update.message.reply_text(ERROR_MESSAGES["empty_filename"])
+        return ASK_VCF_FILENAME
+
+    vcf_files = context.user_data.get('vcf_files', [])
+    output_file_path = f"output_vcf/{custom_filename}.vcf"
+    os.makedirs("output_vcf", exist_ok=True)
+
+    # Merge VCF files
+    with open(output_file_path, 'w') as outfile:
+        for file_path in vcf_files:
+            with open(file_path, 'r') as infile:
+                outfile.write(infile.read())
+                outfile.write('\n')  # Ensure new line between files
+
+    await update.message.reply_text(f"File VCF berhasil digabungkan dengan nama {custom_filename}.vcf")
+    with open(output_file_path, 'rb') as f:
+        await context.bot.send_document(chat_id=update.message.chat_id, document=f, filename=f"{custom_filename}.vcf")
+
+    # Cleanup
+    for file_path in vcf_files:
+        os.remove(file_path)
+    os.remove(output_file_path)
+
+    return ConversationHandler.END
+
 async def broadcast_startup(application):
     """Broadcast startup message to all whitelisted users"""
     users = user_manager.get_all_users()
@@ -942,6 +1021,7 @@ async def broadcast_startup(application):
         "- /txt_to_vcf - Konversi file .txt ke .vcf\n"
         "- /excel_to_vcf - Konversi file .xlsx ke .vcf\n"
         "- /merge_txt - Gabungkan 2 file .txt\n"
+        "- /merge_vcf - Gabungkan file .vcf\n"
         "- /create_txt - Buat file txt dari pesan\n"
         "- /check_limit - Cek sisa limit Anda\n\n"
         "Jika ada pertanyaan, silakan hubungi admin @{}"
@@ -1019,6 +1099,16 @@ def main():
         fallbacks=[],
     )
     application.add_handler(create_txt_conv_handler)
+
+    merge_vcf_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("merge_vcf", merge_vcf_handler)],
+        states={
+            UPLOAD_VCF_FILES: [MessageHandler(filters.Document.FileExtension("vcf") & filters.ChatType.PRIVATE, handle_vcf_file), CommandHandler("done", finish_vcf_upload)],
+            ASK_VCF_FILENAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, merge_vcf_files)]
+        },
+        fallbacks=[],
+    )
+    application.add_handler(merge_vcf_conv_handler)
 
     print("Bot berjalan...")
     
