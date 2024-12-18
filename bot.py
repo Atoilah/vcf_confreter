@@ -70,7 +70,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- /excel_to_vcf: Konversi file .xlsx ke .vcf\n"
         "- /merge_txt: Gabungkan 2 file .txt\n"
         "- /create_txt: Buat file txt dari pesan\n"
-        "Silakan ketik salah satu perintah untuk memulai."
+        "Silakan ketik salah satu perintah untuk memulai.\n"
+        "nb: Bot ini masih dalam tahap pengembangan. Jika Anda mengalami kesulitan, silakan hubungi admin @{}.".format(OWNER_USERNAME)
     )
 
 async def get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -951,6 +952,20 @@ async def broadcast_startup(application):
             await application.bot.send_message(chat_id=int(user_id), text=startup_message)
         except Exception as e:
             print(f"Failed to send startup message to user {user_id}: {str(e)}")
+
+async def broadcast_bot_dead(application):
+    """Broadcast a message to all whitelisted users that the bot is dead"""
+    users = user_manager.get_all_users()
+    dead_message = (
+        "❌ Bot saat ini tidak aktif dan tidak dapat digunakan."
+        "\nSilakan coba lagi nanti atau hubungi admin @{} jika Anda memerlukan bantuan."
+    ).format(OWNER_USERNAME)
+    
+    for user_id in users:
+        try:
+            await application.bot.send_message(chat_id=int(user_id), text=dead_message)
+        except Exception as e:
+            print(f"Failed to send dead message to user {user_id}: {str(e)}")
 
 async def post_init(application):
     """Post initialization hook to send startup broadcast"""
