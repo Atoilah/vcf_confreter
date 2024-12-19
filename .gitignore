@@ -4,3 +4,5 @@ output_vcf/
 output_merged/
 nohup.out
 __pycache__
+input_files/
+downloads/

@@ -1,6 +1,6 @@
 # Telegram Contact Converter Bot
 
-A Telegram bot that converts text and Excel files to VCF (vCard) format.
+A Telegram bot that converts text and Excel files to VCF (vCard) format with robust error handling and progress tracking.
 
 ## Features
 
@@ -13,11 +13,31 @@ A Telegram bot that converts text and Excel files to VCF (vCard) format.
 - Handles NaN values in Excel files gracefully
 - Improved error handling and user notifications
 
-## New Features
+## Enhanced Features
 
-- **Junk File Cleaning**: Owners can clean up junk files and logs to maintain the bot's efficiency.
-- **Bot Restart**: Owners can restart the bot via a Telegram command.
-- **Broadcast Messages**: Owners can send broadcast messages to all users via a Telegram command.
+- **Robust File Handling**:
+  - Chunked file downloads for better performance
+  - Progress tracking for downloads and uploads
+  - Automatic retry on network failures
+  - Temporary file handling to prevent corruption
+
+- **Improved Error Recovery**:
+  - Automatic retry for failed uploads (3 attempts)
+  - Detailed error messages and progress updates
+  - Better cleanup of temporary files
+  - Smart access limit management
+
+- **User Experience**:
+  - Real-time progress updates
+  - Download progress percentage
+  - Upload counter for multiple files
+  - Detailed success/failure reporting
+
+- **Admin Features**:
+  - Junk file cleaning
+  - Bot restart command
+  - Broadcast messaging
+  - Detailed error notifications
 
 ## Setup
 
@@ -47,69 +67,62 @@ To run the Telegram Contact Converter Bot as a background service, follow these 
    - Ensure the `User` field in the service file matches your system username.
 
 2. **Copy the Service File**:
-   - Copy the `bot.service` file to the systemd directory:
-     ```bash
-     sudo cp /home/.../bot_tele/payment/vcf_confreter/bot.service /etc/systemd/system/
-     ```
+   ```bash
+   sudo cp bot.service /etc/systemd/system/
+   ```
 
-3. **Reload Systemd**:
-   - Reload the systemd daemon to recognize the new service:
-     ```bash
-     sudo systemctl daemon-reload
-     ```
+3. **Start the Service**:
+   ```bash
+   sudo systemctl start bot
+   ```
 
-4. **Start the Service**:
-   - Start the bot service:
-     ```bash
-     sudo systemctl start bot.service
-     ```
+4. **Enable Auto-start**:
+   ```bash
+   sudo systemctl enable bot
+   ```
 
-5. **Enable the Service**:
-   - Enable the service to start on boot:
-     ```bash
-     sudo systemctl enable bot.service
-     ```
+5. **Check Status**:
+   ```bash
+   sudo systemctl status bot
+   ```
 
-6. **Check Service Status**:
-   - Check the status of the service to ensure it's running:
-     ```bash
-     sudo systemctl status bot.service
-     ```
+## Error Handling
 
-7. **Remove the Service**:
-   - If you no longer need the bot to run as a service, you can remove it:
-     ```bash
-     sudo systemctl stop bot.service
-     sudo systemctl disable bot.service
-     sudo rm /etc/systemd/system/bot.service
-     sudo systemctl daemon-reload
-     sudo systemctl reset-failed
-     ```
-   - This will stop the service, prevent it from starting on boot, and remove the service file.
+The bot includes comprehensive error handling:
 
-This setup will ensure your bot runs continuously in the background and restarts automatically if it crashes or the system reboots.
+- **Network Issues**: Automatically retries failed downloads/uploads
+- **File Corruption**: Uses temporary files to prevent data corruption
+- **Progress Tracking**: Shows detailed progress for long operations
+- **Cleanup**: Automatically removes temporary files
+- **User Limits**: Preserves user access limits on failed operations
 
-## Usage
+## Bot Commands
 
-- Upload a TXT or Excel file to convert it to VCF format.
-- Follow the prompts to customize the output.
+- `/start` - Start the bot and get usage instructions
+- `/getid` - Get your Telegram user ID
+- `/checklimit` - Check your remaining access limit
+- `/create_txt` - Create a text file for conversion
 
-## File Format Requirements
+**Admin Commands**:
+- `/whitelist` - View whitelisted users
+- `/add_whitelist` - Add a user to whitelist
+- `/remove_whitelist` - Remove a user from whitelist
+- `/set_limit` - Set access limit for a user
+- `/view_logs` - View user interaction logs
+- `/broadcast` - Send message to all users
+- `/restart` - Restart the bot
 
-### TXT Files
-- Each line should contain either:
-  - Just a phone number
-  - Name and phone number separated by comma
+## Dependencies
 
-### Excel Files
-- First column should contain phone numbers
-- Numbers can be with or without country code
-- Bot will automatically add '+' if missing
+- python-telegram-bot: Telegram Bot API wrapper
+- pandas: Data manipulation and analysis
+- openpyxl: Excel file handling
+- python-dotenv: Environment variable management
+- async-timeout: Async operation timeouts
+- watchdog: File system monitoring
+- aiohttp: Async HTTP client/server
+- Additional dependencies in requirements.txt
 
-## Security Features
+## Support
 
-- Bot token and owner ID stored in environment variables
-- User whitelist stored in JSON file
-- Access limits per user
-- Only owner can manage users and limits
-- Owner can restart the bot and broadcast messages
+For issues or feature requests, please contact the bot owner through Telegram.
