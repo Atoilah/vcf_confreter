@@ -98,19 +98,89 @@ The bot includes comprehensive error handling:
 
 ## Bot Commands
 
+### General Commands
 - `/start` - Start the bot and get usage instructions
 - `/getid` - Get your Telegram user ID
 - `/checklimit` - Check your remaining access limit
 - `/create_txt` - Create a text file for conversion
+- `/merge_vcf` - Start merging multiple VCF files
 
-**Admin Commands**:
-- `/whitelist` - View whitelisted users
-- `/add_whitelist` - Add a user to whitelist
-- `/remove_whitelist` - Remove a user from whitelist
-- `/set_limit` - Set access limit for a user
-- `/view_logs` - View user interaction logs
-- `/broadcast` - Send message to all users
+### File Conversion Methods
+1. **Direct File Upload**:
+   - Upload a TXT file directly to convert to VCF
+   - Upload an Excel (XLSX) file directly to convert to VCF
+
+2. **Command-based Conversion**:
+   - `/txt_to_vcf` - Start TXT to VCF conversion process
+   - `/excel_to_vcf` - Start Excel to VCF conversion process
+
+### Owner Commands
+- `/whitelist` - View all whitelisted users and their access limits
+- `/add <user_id>` - Add a user to the whitelist
+- `/remove <user_id>` - Remove a user from the whitelist
+- `/setlimit <user_id> <limit>` - Set access limit for a user
+- `/add_owner <user_id>` - Add a new owner (only owners can add new owners)
+- `/remove_owner <user_id>` - Remove an owner (cannot remove the last owner)
+- `/list_owners` - View all current owners
+- `/broadcast <message>` - Send a message to all whitelisted users
 - `/restart` - Restart the bot
+
+### File Conversion Features
+1. **File Format Support**:
+   - Convert TXT files to VCF
+   - Convert Excel (XLSX) files to VCF
+   - Merge multiple VCF files into one
+
+2. **Customization Options**:
+   - Split output into multiple files
+   - Set number of contacts per file
+   - Customize file sequence numbers
+   - Custom output filenames
+
+3. **VCF File Management**:
+   - Merge multiple VCF files
+   - Custom naming for merged files
+   - Automatic file splitting
+
+### Access Control System
+- **Multiple Owners**:
+  - Share bot management with multiple owners
+  - All owners have full administrative privileges
+  - Cannot remove the last remaining owner
+
+- **User Management**:
+  - Whitelist-based access control
+  - Per-user access limits
+  - Access limit checking and tracking
+
+### Usage Examples
+
+1. **Converting Files**:
+   - Upload a TXT or Excel file directly
+   - Use `/txt_to_vcf` or `/excel_to_vcf` commands
+   - Follow the bot's prompts to customize the conversion
+
+2. **Managing Users**:
+   ```
+   /add 123456789        # Add user to whitelist
+   /setlimit 123456789 5 # Set 5 uses limit
+   /remove 123456789     # Remove from whitelist
+   ```
+
+3. **Owner Management**:
+   ```
+   /add_owner 123456789  # Add new owner
+   /list_owners          # View all owners
+   /remove_owner 123456789  # Remove an owner
+   ```
+
+4. **Merging VCF Files**:
+   ```
+   /merge_vcf           # Start merge process
+   [Upload VCF files]   # Upload files to merge
+   /done               # Finish uploading
+   [Enter filename]    # Set output filename
+   ```
 
 ## Dependencies
 

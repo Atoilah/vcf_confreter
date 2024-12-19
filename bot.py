@@ -116,11 +116,15 @@ async def checklimit(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_whitelist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await log_interaction(update, '/whitelist')
-    if update.effective_user.id != OWNER_ID:
+    if not user_manager.is_owner(update.effective_user.id):
         await update.message.reply_text("Hanya pemilik bot yang dapat melihat daftar whitelist.")
         return
     
     users = user_manager.get_all_users()
+    if not users:
+        await update.message.reply_text("Tidak ada pengguna dalam daftar whitelist.")
+        return
+
     whitelist_info = "Daftar Whitelist Pengguna:\n"
     for user_id, data in users.items():
         limit = data.get("access_limit", "Tidak ada batas")
@@ -384,42 +388,42 @@ async def handle_split_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ASK_SPLIT_SIZE
     else:
         context.user_data['split_size'] = None
-        keyboard = [
-            [
-                InlineKeyboardButton("Ya", callback_data='customize_sequence'),
-                InlineKeyboardButton("Tidak", callback_data='default_sequence')
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(
-            "Apakah Anda ingin mengkustomisasi nomor urut file?",
-            reply_markup=reply_markup
-        )
-        return ASK_SEQUENCE
+        context.user_data['sequence_start'] = 1  # Set default sequence
+        await ask_filename(update, context)  # Skip to filename question
+        return ASK_FILENAME
 
 async def ask_filename(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await log_interaction(update, 'ask_filename')
     if not check_whitelist(update.effective_user.id):
-        await update.message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
+        message = update.message or update.callback_query.message
+        await message.reply_text(ERROR_MESSAGES["access_denied"].format(OWNER_USERNAME))
         return
+
+    message = update.message or update.callback_query.message
     
-    try:
-        context.user_data['split_size'] = int(update.message.text)
-        keyboard = [
-            [
-                InlineKeyboardButton("Ya", callback_data='customize_sequence'),
-                InlineKeyboardButton("Tidak", callback_data='default_sequence')
+    # If coming from a message (split size input)
+    if update.message and update.message.text:
+        try:
+            context.user_data['split_size'] = int(update.message.text)
+            keyboard = [
+                [
+                    InlineKeyboardButton("Ya", callback_data='customize_sequence'),
+                    InlineKeyboardButton("Tidak", callback_data='default_sequence')
+                ]
             ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "Apakah Anda ingin mengkustomisasi nomor urut file?",
-            reply_markup=reply_markup
-        )
-        return ASK_SEQUENCE
-    except ValueError:
-        await update.message.reply_text("Masukkan angka yang valid untuk jumlah kontak per file.")
-        return ASK_SPLIT_SIZE
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await message.reply_text(
+                "Apakah Anda ingin mengkustomisasi nomor urut file?",
+                reply_markup=reply_markup
+            )
+            return ASK_SEQUENCE
+        except ValueError:
+            await message.reply_text("Masukkan angka yang valid untuk jumlah kontak per file.")
+            return ASK_SPLIT_SIZE
+    
+    # If coming from callback query (no split)
+    await message.edit_text("Masukkan nama file output (tanpa ekstensi):")
+    return ASK_FILENAME
 
 async def handle_sequence_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -983,6 +987,61 @@ async def save_txt_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return ConversationHandler.END
 
+async def add_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Add a new owner. Only existing owners can add new owners."""
+    if not user_manager.is_owner(update.effective_user.id):
+        await update.message.reply_text("Only owners can add new owners.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Please provide the user ID to add as owner.")
+        return
+
+    try:
+        new_owner_id = int(context.args[0])
+        user_manager.add_owner(new_owner_id)
+        await update.message.reply_text(f"User {new_owner_id} has been added as an owner.")
+    except ValueError:
+        await update.message.reply_text("Invalid user ID. Please provide a valid numeric ID.")
+
+async def remove_owner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Remove an owner. Only owners can remove other owners."""
+    if not user_manager.is_owner(update.effective_user.id):
+        await update.message.reply_text("Only owners can remove owners.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Please provide the user ID to remove from owners.")
+        return
+
+    try:
+        owner_id = int(context.args[0])
+        # Prevent removing the last owner
+        if len(user_manager.get_owners()) <= 1:
+            await update.message.reply_text("Cannot remove the last owner.")
+            return
+        
+        if user_manager.remove_owner(owner_id):
+            await update.message.reply_text(f"User {owner_id} has been removed from owners.")
+        else:
+            await update.message.reply_text(f"User {owner_id} is not an owner.")
+    except ValueError:
+        await update.message.reply_text("Invalid user ID. Please provide a valid numeric ID.")
+
+async def list_owners(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List all owners."""
+    if not user_manager.is_owner(update.effective_user.id):
+        await update.message.reply_text("Only owners can view the list of owners.")
+        return
+
+    owners = user_manager.get_owners()
+    if not owners:
+        await update.message.reply_text("No owners found.")
+        return
+
+    owners_text = "Current owners:\n" + "\n".join([f"- {owner_id}" for owner_id in owners])
+    await update.message.reply_text(owners_text)
+
 if __name__ == "__main__":
     def main():
         """Start the bot."""
@@ -1047,6 +1106,9 @@ if __name__ == "__main__":
         application.add_handler(CommandHandler("view_logs", view_logs))
         application.add_handler(CommandHandler("restart", restart_command))
         application.add_handler(CommandHandler("broadcast", broadcast_command))
+        application.add_handler(CommandHandler("add_owner", add_owner))
+        application.add_handler(CommandHandler("remove_owner", remove_owner))
+        application.add_handler(CommandHandler("list_owners", list_owners))
 
         print("Bot berjalan...")
         

@@ -6,6 +6,11 @@ class UserManager:
     def __init__(self, data_file: str = "data/users.json"):
         self.data_file = data_file
         self.users: Dict[str, dict] = self._load_users()
+        # Initialize owners list if not exists
+        if not self._get_owners():
+            owner_id = os.getenv("OWNER_ID")
+            if owner_id:
+                self._add_owner(owner_id)
 
     def _load_users(self) -> Dict[str, dict]:
         """Load users from JSON file."""
@@ -19,6 +24,32 @@ class UserManager:
         os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
         with open(self.data_file, 'w') as f:
             json.dump(self.users, f, indent=4)
+
+    def _get_owners(self) -> List[str]:
+        """Get list of owner IDs."""
+        if "owners" not in self.users:
+            self.users["owners"] = []
+            self._save_users()
+        return self.users["owners"]
+
+    def _add_owner(self, user_id: str) -> None:
+        """Add a user to owners list."""
+        owners = self._get_owners()
+        if str(user_id) not in owners:
+            owners.append(str(user_id))
+            self.users["owners"] = owners
+            self._save_users()
+
+    def _remove_owner(self, user_id: str) -> bool:
+        """Remove a user from owners list."""
+        owners = self._get_owners()
+        user_id_str = str(user_id)
+        if user_id_str in owners:
+            owners.remove(user_id_str)
+            self.users["owners"] = owners
+            self._save_users()
+            return True
+        return False
 
     def add_user(self, user_id: int, access_limit: Optional[int] = None) -> None:
         """Add a user to the whitelist."""
@@ -61,7 +92,10 @@ class UserManager:
 
     def get_all_users(self) -> Dict[str, dict]:
         """Get all users and their limits."""
-        return self.users.copy()
+        users_copy = self.users.copy()
+        if "owners" in users_copy:
+            del users_copy["owners"]
+        return users_copy
 
     def is_user_active(self, user_id: int) -> bool:
         """Check if user exists and is not expired or limited"""
@@ -76,7 +110,20 @@ class UserManager:
 
         return True
 
+    def add_owner(self, user_id: int) -> None:
+        """Add a user as an owner."""
+        self._add_owner(str(user_id))
+        # Also ensure the user is whitelisted with no limits
+        self.add_user(user_id, access_limit=None)
+
+    def remove_owner(self, user_id: int) -> bool:
+        """Remove a user from owners."""
+        return self._remove_owner(str(user_id))
+
     def is_owner(self, user_id: int) -> bool:
-        """Check if the user is the owner."""
-        owner_id = os.getenv("OWNER_ID")
-        return str(user_id) == owner_id
+        """Check if the user is an owner."""
+        return str(user_id) in self._get_owners()
+
+    def get_owners(self) -> List[int]:
+        """Get list of all owners."""
+        return [int(owner_id) for owner_id in self._get_owners()]
