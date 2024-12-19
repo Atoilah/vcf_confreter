@@ -5,6 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=kepesenggg
+# set the path to your bot.py file
 WorkingDirectory=/home/kepesenggg/bot_tele/payment/vcf_confreter
 ExecStart=/usr/bin/python3 /home/kepesenggg/bot_tele/payment/vcf_confreter/bot.py
 Restart=always

@@ -536,3 +536,4 @@ timestamp,user_id,username,command,message
 2024-12-19 01:34:00,7915561803,Byuhhhhhh,/create_txt,/create_txt
 2024-12-19 01:34:05,7915561803,Byuhhhhhh,handle_txt_message,00:E0:4C:4D:96:59
 2024-12-19 01:34:09,7915561803,Byuhhhhhh,save_txt_message,dasda
+2024-12-19 02:48:01,7915561803,Byuhhhhhh,/txt_to_vcf,/txt_to_vcf
